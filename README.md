@@ -1,8 +1,6 @@
 # ML Damage Analysis - Mehdi Dataset
 
-Using ML on a real dataset to predict damage that is pit corrosion like. 
-
-This project analyzes impedance data for weight prediction using machine learning models.
+Using ML on a real dataset to predict damage that is uniform-like. This project analyzes impedance data for weight prediction using machine learning models.
 
 ## Files
 
@@ -12,6 +10,11 @@ This project analyzes impedance data for weight prediction using machine learnin
 - `Datafolder/` - Contains impedance sweep data (.mat files)
 
 ## Analysis Results
+
+<img scr="figures/Sample_uniform_corrosion.jpg" width="60%" alt="Sample with uniform corrosion">
+
+<img scr="figures/Scale_and_sample.jpg" width="60%" alt="Sample on the scale">
+
 
 ### RMSD Analysis
 Root Mean Square Deviation of major peak in real part of impedance data:
