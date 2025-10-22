@@ -11,9 +11,9 @@ Using ML on a real dataset to predict damage that is uniform-like. This project 
 
 ## Analysis Results
 
-<img scr="figures/Sample_uniform_corrosion.jpg" width="60%" alt="Sample with uniform corrosion">
+<img src="figures/Sample_uniform_corrosion.jpg" width="40%" alt="Sample with uniform corrosion">
 
-<img scr="figures/Scale_and_sample.jpg" width="60%" alt="Sample on the scale">
+<img src="figures/Scale_and_sample.jpg" width="40%" alt="Sample on the scale">
 
 
 ### RMSD Analysis
