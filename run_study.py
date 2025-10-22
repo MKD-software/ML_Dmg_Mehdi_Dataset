@@ -3,7 +3,7 @@
 
 # # Data loading and exploration
 
-# In[ ]:
+# In[7]:
 
 
 import optuna
@@ -87,8 +87,11 @@ datasets = [
     for f in files
 ]
 
+# Organize datasets by weight, starting with the highest weight
+datasets = sorted(datasets, key=lambda x: x["weight_g"], reverse=True)
 
-# In[3]:
+
+# In[8]:
 
 
 plt.figure(figsize=(8, 5))
@@ -116,11 +119,17 @@ plt.show()
 
 # Frequency range parameters (in kHz) for feature extraction
 freq_start_khz = 50   # Change this to set start frequency
-freq_stop_khz = 500    # Change this to set stop frequency
+freq_stop_khz = 200    # Change this to set stop frequency
+
+study_focus = "withimaginary"
 
 # Study configuration
-study_name = f"impedance_optimization_{freq_start_khz}_{freq_stop_khz}kHz"
+study_name = f"impedance_optimization_{study_focus}_{freq_start_khz}_{freq_stop_khz}kHz"
 storage_url = "sqlite:///optuna_study.db"
+
+fig_folder = "figures/{study_focus}"
+if not os.path.exists(fig_folder):
+    os.makedirs(fig_folder)
 
 TUNA_TRAILS = 300
 NUM_OF_EPOCHS = 300
@@ -136,7 +145,7 @@ study = optuna.create_study(
 
 # ## 1. Data prep
 
-# In[ ]:
+# In[10]:
 
 
 # Build dataset matrix
@@ -151,9 +160,8 @@ for d in datasets:
     R = d["R"][freq_mask]
     Xc = d["Xc"][freq_mask]
     temp = d["temperature_C"]
-    # feature vector: concatenate R, Xc, and temp
-    #features = np.concatenate([R, Xc, [temp]])
-    features = np.concatenate([R])
+    # feature vector, change trainning data
+    features = np.concatenate([R, Xc])
     X_data.append(features)
     y_data.append(d["weight_g"] - 115.0)  # target: delta weight
 
@@ -168,7 +176,7 @@ X_data = scaler.fit_transform(X_data)
 
 # ## 2. Pytorch dataset
 
-# In[34]:
+# In[11]:
 
 
 class ImpedanceDataset(Dataset):
@@ -185,7 +193,7 @@ dataset = ImpedanceDataset(X_data, y_data)
 
 # ## 3. Train/Validate split
 
-# In[ ]:
+# In[12]:
 
 
 from sklearn.model_selection import train_test_split
@@ -199,7 +207,7 @@ val_loader = DataLoader(val_ds, batch_size=64)
 
 # ## 4. Define model
 
-# In[36]:
+# In[13]:
 
 
 class ImpedanceNet(torch.nn.Module):
@@ -263,7 +271,7 @@ else:
 print()
 
 
-# In[ ]:
+# In[26]:
 
 
 def objective(trial):
@@ -336,7 +344,7 @@ print(f"optuna-dashboard {storage_url}")
 
 # ## 6. Train final model with best parameters
 
-# In[37]:
+# In[ ]:
 
 
 # Check if CUDA is available
@@ -346,43 +354,83 @@ print(f"Training on device: {device}")
 best_params = study.best_params
 print(f"Best parameters: {best_params}")
 
-model = ImpedanceNet(
-    X_train.shape[1], 
-    best_params["hidden_channels"], 
-    best_params["kernel_size"], 
-    best_params["stride"],  # New parameter
-    best_params["dropout"]
-)
-model = model.to(device)  # Move model to GPU
+# Configuration for multiple training runs
+N_TRAINING_RUNS = 5  # Number of times to train the model
+print(f"Training model {N_TRAINING_RUNS} times to select the best one...")
 
-opt = torch.optim.Adam(model.parameters(), lr=best_params["lr"])
-loss_fn = torch.nn.MSELoss()
+best_model = None
+best_val_loss = float('inf')
+best_train_losses = None
+all_val_losses = []
 
-# Training loop with progress tracking
-train_losses = []
-for epoch in range(200):
-    model.train()
-    epoch_loss = 0
-    for xb, yb in train_loader:
-        xb, yb = xb.to(device), yb.to(device)  # Move data to GPU
-        opt.zero_grad()
-        loss = loss_fn(model(xb), yb)
-        loss.backward()
-        opt.step()
-        epoch_loss += loss.item()
+for run in range(N_TRAINING_RUNS):
+    print(f"\n--- Training Run {run + 1}/{N_TRAINING_RUNS} ---")
     
-    avg_loss = epoch_loss / len(train_loader)
-    train_losses.append(avg_loss)
-    
-    if (epoch + 1) % 50 == 0:
-        print(f"Epoch {epoch+1}/200, Average Loss: {avg_loss:.4f}")
+    # Create new model instance for each run
+    model = ImpedanceNet(
+        X_train.shape[1], 
+        best_params["hidden_channels"], 
+        best_params["kernel_size"], 
+        best_params["stride"],
+        best_params["dropout"]
+    )
+    model = model.to(device)
 
-print("Training completed!")
+    opt = torch.optim.Adam(model.parameters(), lr=best_params["lr"])
+    loss_fn = torch.nn.MSELoss()
+
+    # Training loop with progress tracking
+    train_losses = []
+    for epoch in range(NUM_OF_EPOCHS):
+        model.train()
+        epoch_loss = 0
+        for xb, yb in train_loader:
+            xb, yb = xb.to(device), yb.to(device)
+            opt.zero_grad()
+            loss = loss_fn(model(xb), yb)
+            loss.backward()
+            opt.step()
+            epoch_loss += loss.item()
+        
+        avg_loss = epoch_loss / len(train_loader)
+        train_losses.append(avg_loss)
+        
+        if (epoch + 1) % 100 == 0:  # Less frequent printing during multiple runs
+            print(f"  Epoch {epoch+1}/{NUM_OF_EPOCHS}, Average Loss: {avg_loss:.4f}")
+
+    # Evaluate on validation set
+    model.eval()
+    val_loss = 0
+    with torch.no_grad():
+        for xb, yb in val_loader:
+            xb, yb = xb.to(device), yb.to(device)
+            pred = model(xb)
+            val_loss += loss_fn(pred, yb).item()
+    
+    final_val_loss = val_loss / len(val_loader)
+    all_val_losses.append(final_val_loss)
+    print(f"  Final validation loss: {final_val_loss:.4f}")
+    
+    # Keep track of the best model
+    if final_val_loss < best_val_loss:
+        best_val_loss = final_val_loss
+        best_model = model
+        best_train_losses = train_losses
+        print(f"  *** New best model found! (Val loss: {final_val_loss:.4f}) ***")
+
+# Use the best model for subsequent evaluations
+model = best_model
+train_losses = best_train_losses
+
+print(f"\nTraining completed!")
+print(f"Best validation loss across {N_TRAINING_RUNS} runs: {best_val_loss:.4f}")
+print(f"All validation losses: {[f'{loss:.4f}' for loss in all_val_losses]}")
+print(f"Improvement over worst run: {max(all_val_losses) - best_val_loss:.4f}")
 
 
 # ## 7. Evaluate
 
-# In[38]:
+# In[35]:
 
 
 model.eval()
@@ -393,7 +441,9 @@ with torch.no_grad():
     
     preds = model(X_val_tensor)
     mse = ((preds - y_val_tensor)**2).mean().item()
+    rmse = np.sqrt(mse)
 print(f"Validation MSE: {mse:.4f}")
+print(f"Validation RMSE: {rmse:.4f}")
 
 # Also calculate and display other metrics
 mae = torch.abs(preds - y_val_tensor).mean().item()
@@ -408,7 +458,7 @@ print(f"Validation R²: {r2.item():.4f}")
 
 # ## 8. Plot predictions
 
-# In[ ]:
+# In[30]:
 
 
 model.eval()
@@ -426,7 +476,7 @@ ax1.scatter(y_true, y_pred, c="blue", alpha=0.7, edgecolors="k")
 ax1.plot([y_true.min(), y_true.max()], [y_true.min(), y_true.max()], "r--", label="Ideal")
 ax1.set_xlabel("True weight (g)")
 ax1.set_ylabel("Predicted weight (g)")
-ax1.set_title("Predicted vs. True Weights")
+ax1.set_title("Predicted vs. True Weights. RMSE = {:.4f} g".format(rmse))
 ax1.legend()
 ax1.grid(True)
 
@@ -443,9 +493,12 @@ else:
     ax2.set_title("Training Loss")
 
 
+prediction_folder = f"{fig_folder}/Predictions"
+if not os.path.exists(prediction_folder):
+    os.makedirs(prediction_folder)
 
 plt.tight_layout()
-plt.savefig("model_prediction_{freq_start_khz}_{freq_stop_khz}kHz.png")
+plt.savefig(f"{prediction_folder}/model_prediction_{freq_start_khz}_{freq_stop_khz}kHz.png")
 plt.show()
 
 # Print final model summary
@@ -456,4 +509,62 @@ print(f"- Stride: {best_params['stride']}")
 print(f"- Dropout: {best_params['dropout']:.3f}")
 print(f"- Learning rate: {best_params['lr']:.6f}")
 print(f"- Device used: {device}")
+
+
+# ## 9. RMSD Analysis
+
+# In[ ]:
+
+
+# Take real impedance from first dataset as reference
+R_ref = datasets[0]["R"]
+weight_ref = datasets[0]["weight_g"]
+freq_ref = datasets[0]["f"] / 1000  # Convert to kHz
+
+# Filter reference data by frequency range
+freq_mask_ref = (freq_ref >= freq_start_khz) & (freq_ref <= freq_stop_khz)
+R_ref_filtered = R_ref[freq_mask_ref]
+
+# Compute RMSD between R_ref and all other R datasets
+rmsd_values = []
+weights = []
+
+for d in datasets:
+    # Filter data by frequency range
+    freq_khz = d["f"] / 1000
+    freq_mask = (freq_khz >= freq_start_khz) & (freq_khz <= freq_stop_khz)
+    R_d = d["R"][freq_mask]
+    
+    # Compute normalized RMSD
+    diff_norm = np.sqrt(((R_d - R_ref_filtered)**2) / (R_ref_filtered**2))
+    rmsd = np.nansum(diff_norm)  # equivalent to sum(..., 'omitnan')
+    
+    rmsd_values.append(rmsd)
+    weights.append(weight_ref - d["weight_g"])
+
+# Plot RMSD vs weights
+plt.figure(figsize=(8, 6))
+plt.plot(weights, rmsd_values, 'o-', color='blue', alpha=0.7, markersize=6, linewidth=1.5)
+
+# Add linear trend line
+z = np.polyfit(weights, rmsd_values, 1)
+p = np.poly1d(z)
+plt.plot(weights, p(weights), "r--", alpha=0.8, linewidth=2, label=f'Linear trend (slope={z[0]:.3f})')
+
+plt.xlabel('Weight difference from reference (g)')
+plt.ylabel('RMSD')
+plt.title(f'RMSD vs Weight ({freq_start_khz}-{freq_stop_khz} kHz)')
+plt.grid(True, alpha=0.3)
+plt.legend()
+plt.tight_layout()
+
+# Save the plot
+plt.savefig(f'{fig_folder}/RMSD/rmsd_vs_weight_{freq_start_khz}_{freq_stop_khz}kHz.png', dpi=300, bbox_inches='tight')
+plt.show()
+
+print(f"RMSD analysis completed for frequency range {freq_start_khz}-{freq_stop_khz} kHz")
+print(f"Number of datasets analyzed: {len(rmsd_values)}")
+print(f"RMSD range: {np.min(rmsd_values):.3f} to {np.max(rmsd_values):.3f}")
+print(f"Linear trend slope: {z[0]:.6f}")
+print(f"Reference weight: {weight_ref:.2f}g")
 
