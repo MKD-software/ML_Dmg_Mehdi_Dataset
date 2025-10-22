@@ -1,6 +1,7 @@
-<<<<<<< HEAD
 # ML Damage Analysis - Mehdi Dataset
 
+Using ML on a real dataset to predict damage that is pit corrosion like. 
+=======
 This project analyzes impedance data for weight prediction using machine learning models.
 
 ## Files
@@ -29,8 +30,3 @@ Using 50-500kHz full dataset
 <img src="figures/Predictions/model_prediction_50_500kHz.png" width="60%" alt="Model Prediction 50-500kHz">
 
 **Key Finding:** Using just the major peak vs. full dataset yields similar performance, but peak-only analysis is significantly faster.
-=======
-# ML_Dmg_Mehdi_Dataset
-
-Using ML on a real dataset to predict damage that is pit corrosion like. 
->>>>>>> 5f00b8d654d2abb8f87f90e08ed0ac19b5740903
