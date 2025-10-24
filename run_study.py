@@ -118,16 +118,16 @@ plt.show()
 
 
 # Frequency range parameters (in kHz) for feature extraction
-freq_start_khz = 50   # Change this to set start frequency
+freq_start_khz = 165   # Change this to set start frequency
 freq_stop_khz = 200    # Change this to set stop frequency
 
-study_focus = "withimaginary"
+study_focus = "RealTemp"
 
 # Study configuration
 study_name = f"impedance_optimization_{study_focus}_{freq_start_khz}_{freq_stop_khz}kHz"
 storage_url = "sqlite:///optuna_study.db"
 
-fig_folder = "figures/{study_focus}"
+fig_folder = f"figures/{study_focus}"
 if not os.path.exists(fig_folder):
     os.makedirs(fig_folder)
 
@@ -145,12 +145,18 @@ study = optuna.create_study(
 
 # ## 1. Data prep
 
-# In[10]:
+# In[ ]:
 
 
 # Build dataset matrix
 freqs = datasets[0]["f"]
 X_data, y_data = [], []
+
+# Get reference values from first dataset for normalization
+freq_khz_ref = datasets[0]["f"] / 1000
+freq_mask_ref = (freq_khz_ref >= freq_start_khz) & (freq_khz_ref <= freq_stop_khz)
+R_ref = datasets[0]["R"][freq_mask_ref]
+Xc_ref = datasets[0]["Xc"][freq_mask_ref]
 
 for d in datasets:
     # Filter data by frequency range
@@ -160,8 +166,16 @@ for d in datasets:
     R = d["R"][freq_mask]
     Xc = d["Xc"][freq_mask]
     temp = d["temperature_C"]
+    
+    # Normalize R and Xc by dividing by the first dataset values
+    R_normalized = R / R_ref
+    Xc_normalized = Xc / Xc_ref
+    
     # feature vector, change trainning data
-    features = np.concatenate([R, Xc])
+    # --------------------------------------
+    features = np.concatenate([R_normalized, [temp]])
+    # --------------------------------------
+
     X_data.append(features)
     y_data.append(d["weight_g"] - 115.0)  # target: delta weight
 
@@ -193,7 +207,7 @@ dataset = ImpedanceDataset(X_data, y_data)
 
 # ## 3. Train/Validate split
 
-# In[12]:
+# In[ ]:
 
 
 from sklearn.model_selection import train_test_split
@@ -201,7 +215,7 @@ from sklearn.model_selection import train_test_split
 X_train, X_val, y_train, y_val = train_test_split(X_data, y_data, test_size=0.3, random_state=42)
 train_ds = ImpedanceDataset(X_train, y_train)
 val_ds = ImpedanceDataset(X_val, y_val)
-train_loader = DataLoader(train_ds, batch_size=64, shuffle=True)
+train_loader = DataLoader(train_ds, batch_size=64, shuffle=False)
 val_loader = DataLoader(val_ds, batch_size=64)
 
 
