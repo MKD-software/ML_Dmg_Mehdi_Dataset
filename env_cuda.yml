@@ -1,0 +1,17 @@
+name: corro_ml_env
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - pytorch
+  - torchvision
+  - pytorch-cuda=11.8
+  - numpy
+  - pandas
+  - scikit-learn
+  - tqdm
+  - optuna
+  - matplotlib

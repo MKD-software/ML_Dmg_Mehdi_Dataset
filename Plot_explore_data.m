@@ -21,41 +21,19 @@
 clear; clc; close all;
 
 %% ================= USER OPTIONS =================
-%% ================= USER OPTIONS =================
-DATA_DIR = 'C:\Users\LEGION\Documents\MATLAB\poject\session_20250903_112550_05\sweep123_003';
+DATA_DIR = 'C:\Users\au585732\ML_Dmg_Mehdi_Dataset\Datafolder';
 
-% ---- Add/Remove files here (any count) ----
-FILES = { ...
-    fullfile(DATA_DIR,'sweep_50_500K_9000_1v_t10920_25.8.mat'), ...
-    fullfile(DATA_DIR,'sweep_50_500K_9000_1v_t10940_26.1.mat'), ...
-    fullfile(DATA_DIR,'sweep_50_500K_9000_1v_t10965_26.6.mat'), ...
-    fullfile(DATA_DIR,'sweep_50_500K_9000_1v_t10990_26.0.mat'), ...
-    fullfile(DATA_DIR,'sweep_50_500K_9000_1v_t11010_26.0.mat'), ...
-    fullfile(DATA_DIR,'sweep_50_500K_9000_1v_t11030_25.5.mat'), ...
-    fullfile(DATA_DIR,'sweep_50_500K_9000_1v_t11050_23.9.mat'), ...
-    fullfile(DATA_DIR,'sweep_50_500K_9000_1v_t11070_24.2.mat'), ...
-    fullfile(DATA_DIR,'sweep_50_500K_9000_1v_t11090_24.9.mat'), ...
-    fullfile(DATA_DIR,'sweep_50_500K_9000_1v_t11110_25.3.mat'), ...
-    fullfile(DATA_DIR,'sweep_50_500K_9000_1v_t11130_25.1.mat'), ...
-    fullfile(DATA_DIR,'sweep_50_500K_9000_1v_t11150_25.6.mat'), ...
-    fullfile(DATA_DIR,'sweep_50_500K_9000_1v_t11170_26.1.mat'), ...
-    fullfile(DATA_DIR,'sweep_50_500K_9000_1v_t11190_24.8.mat'), ...
-    fullfile(DATA_DIR,'sweep_50_500K_9000_1v_t11205_25.4.mat'), ...
-    fullfile(DATA_DIR,'sweep_50_500K_9000_1v_t11225_25.3.mat'), ...
-    fullfile(DATA_DIR,'sweep_50_500K_9000_1v_t11250_25.4.mat'), ...
-    fullfile(DATA_DIR,'sweep_50_500K_9000_1v_t11270_25.5.mat'), ...
-    fullfile(DATA_DIR,'sweep_50_500K_9000_1v_t11290_25.4.mat'), ...
-    fullfile(DATA_DIR,'sweep_50_500K_9000_1v_t11310_24.9.mat'), ...
-    fullfile(DATA_DIR,'sweep_50_500K_9000_1v_t11330_24.9.mat'), ...
-    fullfile(DATA_DIR,'sweep_50_500K_9000_1v_t11350_25.4.mat'), ...
-    fullfile(DATA_DIR,'sweep_50_500K_9000_1v_t11370_25.5.mat'), ...
-    fullfile(DATA_DIR,'sweep_50_500K_9000_1v_t11390_25.3.mat'), ...
-    fullfile(DATA_DIR,'sweep_50_500K_9000_1v_t11410_26.0.mat'), ...
-    fullfile(DATA_DIR,'sweep_50_500K_9000_1v_t11430_25.3.mat'), ...
-    fullfile(DATA_DIR,'sweep_50_500K_9000_1v_t11480_23.6.mat'), ...
-    fullfile(DATA_DIR,'sweep_50_500K_9000_1v_t11480_27.5.mat'), ...
-    fullfile(DATA_DIR,'sweep_50_500K_9000_1v_t11500_23.6.mat')  ...
-};
+% Get list of all .mat files in the directory
+matFiles = dir(fullfile(DATA_DIR, '*.mat'));
+
+% Preallocate cell array for file paths
+FILES = cell(1, numel(matFiles));
+
+% Fill FILES with full paths
+for k = 1:numel(matFiles)
+    FILES{k} = fullfile(DATA_DIR, matFiles(k).name);
+end
+FILES = flip(FILES);
 
 % ---- Per-file parameters (you can give scalars; they auto-expand) ----
 V_APPLIED = 0.707;      % [V RMS] (scalar or 1xN array)
@@ -68,10 +46,7 @@ F_MAX = 500e3;          % [Hz]
 % ---- Plot style & cosmetic smoothing (display only for |Z| & ∠Z) ----
 USE_LOG_X  = false;     % false=linear freq (like LabOne), true=log freq
 USE_SMOOTH = false;
-SMOOTH_WIN = 5;
-
-% ---- Common frequency grid for RMSD(|Z|) computations ----
-N_GRID = 2000;
+SMOOTH_WIN = 1;
 
 % ---- Unit sanity messages ----
 SHOW_WARN_UNIT_MISMATCH = true;
@@ -150,66 +125,11 @@ for k=1:nF
         nm, D.V, mtxt, ttxt, Zmin, D.f(imin), Zmax, D.f(imax));
 end
 
-%% ================= COMMON GRID + RMSD(|Z|) FOR FIG.8 =================
-% Frequency overlap across all files
-f_lo = F_MIN; f_hi = F_MAX;
-for k=1:nF
-    f_lo = max(f_lo, min(DATA{k}.f));
-    f_hi = min(f_hi, max(DATA{k}.f));
-end
-if f_lo >= f_hi
-    error('No frequency overlap across files in [F_MIN..F_MAX].');
-end
-fgrid = linspace(f_lo, f_hi, N_GRID);
-
-% |Z| interpolated onto common grid
-Zmat = zeros(nF, N_GRID);
-for k=1:nF
-    Zmat(k,:) = interp1(DATA{k}.f, DATA{k}.Zmag, fgrid, 'pchip');
-end
-
-% Pairwise RMSD(|Z|)
-RMSD_pair = zeros(nF);
-for i=1:nF
-    for j=1:nF
-        d = Zmat(i,:) - Zmat(j,:);
-        RMSD_pair(i,j) = sqrt(mean(d.^2,'omitnan'));
-    end
-end
-
-% RMSD of each file to the group mean
-Z_mean = mean(Zmat,1,'omitnan');
-RMSD_to_mean = zeros(1,nF);
-for k=1:nF
-    d = Zmat(k,:) - Z_mean;
-    RMSD_to_mean(k) = sqrt(mean(d.^2,'omitnan'));
-end
 
 %% ================= PLOTTING HELPERS =================
 cols = lines(nF);
 plotfun = @(f,y) ( USE_LOG_X * semilogx(f,y,'-','LineWidth',1.2) + ...
                    (~USE_LOG_X) * plot    (f,y,'-','LineWidth',1.2) ); %#ok<NASGU>
-
-%% ================= FIGURE 1: |I| =================
-figure('Name','1) |I|','Position',[40 40 1180 520]); hold on; grid on;
-for k=1:nF, plot_x(DATA{k}.f, DATA{k}.I_mag, USE_LOG_X, '-', 'LineWidth',1.2, 'Color', cols(k,:)); end
-xlim([F_MIN F_MAX]); ylabel('|I| [A]'); title('Current magnitude |I| = sqrt(X^2 + Y^2)');
-legend(LEG,'Location','bestoutside'); add_note(gcf, note);
-
-%% ================= FIGURE 2: φI =================
-figure('Name','2) φI','Position',[60 60 1180 520]); hold on; grid on;
-for k=1:nF, plot_x(DATA{k}.f, DATA{k}.phiIdeg, USE_LOG_X, '-', 'LineWidth',1.2, 'Color', cols(k,:)); end
-xlim([F_MIN F_MAX]); ylabel('\phi_I [deg]'); title('Current phase (unwrapped)');
-legend(LEG,'Location','bestoutside'); add_note(gcf, note);
-
-%% ================= FIGURE 3: V_RMS (flat lines) ===============
-figure('Name','3) V_RMS','Position',[80 80 980 420]); hold on; grid on;
-for k=1:nF
-    f = DATA{k}.f;
-    plot_x(f, ones(size(f))*V_APPLIED(k), USE_LOG_X, '-', 'LineWidth',1.5, 'Color', cols(k,:));
-end
-xlim([F_MIN F_MAX]); ylabel('V_{RMS} [V]'); title('Applied RMS voltage');
-legend(LEG,'Location','bestoutside'); add_note(gcf, note);
 
 %% ================= FIGURE 4: |Z| =================
 figure('Name','4) |Z|','Position',[100 100 1180 520]); hold on; grid on;
@@ -236,41 +156,167 @@ for k=1:nF, plot_x(DATA{k}.f, DATA{k}.Xc, USE_LOG_X, '-', 'LineWidth',1.4, 'Colo
 xlim([F_MIN F_MAX]); ylabel('X [\Omega]'); xlabel('Frequency [Hz]'); title('Reactance Im(Z)');
 legend(ax2, LEG,'Location','bestoutside'); add_note(gcf, note);
 
-%% ================= FIGURE 7: Re/Im(I) =================
-figure('Name','7) Re/Im(I)','Position',[160 160 1180 720]);
-tiledlayout(2,1,'Padding','compact','TileSpacing','compact');
+%%
 
-ax3 = nexttile; hold on; grid on;
-for k=1:nF, plot_x(DATA{k}.f, DATA{k}.X, USE_LOG_X, '-', 'LineWidth',1.3, 'Color', cols(k,:)); end
-xlim([F_MIN F_MAX]); ylabel('Re(I) [A]'); title('Current real part X');
+% ---- Extract weights (in grams) and temperatures (in °C) ----
+nFiles = numel(FILES);
+weights = zeros(1, nFiles);
+temps = zeros(1, nFiles);
 
-ax4 = nexttile; hold on; grid on;
-for k=1:nF, plot_x(DATA{k}.f, DATA{k}.Y, USE_LOG_X, '-', 'LineWidth',1.3, 'Color', cols(k,:)); end
-xlim([F_MIN F_MAX]); ylabel('Im(I) [A]'); xlabel('Frequency [Hz]'); title('Current imaginary part Y');
-legend(ax4, LEG,'Location','bestoutside'); add_note(gcf, note);
-
-%% ================= FIGURE 8: RMSD Heatmap + RMSD to Mean ==========
-figure('Name','8) RMSD(|Z|) — all-vs-all','Position',[180 180 1200 560]);
-tiledlayout(1,2,'Padding','compact','TileSpacing','compact');
-
-% all-vs-all heatmap
-axh = nexttile; imagesc(RMSD_pair); colorbar; axis image;
-title(axh, sprintf('RMSD(|Z|) over [%.0f..%.0f] Hz', f_lo, f_hi));
-set(axh,'XTick',1:nF,'XTickLabel',1:nF,'YTick',1:nF,'YTickLabel',1:nF);
-xlabel('File #'); ylabel('File #');
-
-% RMSD to group mean
-axb = nexttile; bar(RMSD_to_mean,'FaceAlpha',0.85); grid on;
-title(axb,'RMSD(|Z|) to Group Mean'); xlabel('File #'); ylabel('RMSD [\Omega]');
-xticklabels( arrayfun(@(k) sprintf('%d',k), 1:nF, 'uni',0) );
-
-% file names under the figure
-note_rmsd = "Files:";
-for k=1:nF
-    [~,nm,~] = fileparts(FILES{k});
-    note_rmsd = note_rmsd + sprintf('\n#%d: %s',k,nm);
+for i = 1:nFiles
+    [~, name, ~] = fileparts(FILES{i});
+    % Match the pattern "t#####" for weight and the trailing "_##.#" for temperature
+    tokens = regexp(name, 't(\d+)_([\d\.]+)', 'tokens');
+    if ~isempty(tokens)
+        weights(i) = str2double(tokens{1}{1}) / 100;  % e.g. t10920 → 109.20 g
+        temps(i)   = str2double(tokens{1}{2});        % e.g. 25.8 → 25.8 °C
+    end
 end
-add_note(gcf, note_rmsd);
+
+% Example: extract data from all files
+for k = 1:nF
+    RealData{k}   = movmean(DATA{k}.R,50);
+    Imaginary{k}  = DATA{k}.Xc;
+    Freq{k}       = DATA{k}.f;
+end
+
+% Define frequency limits
+f_min = 165e3;  % 165 kHz
+f_max = 200e3;  % 200 kHz
+
+% Apply mask to all datasets
+for k = 1:nFiles
+    freq_mask = (Freq{k} >= f_min) & (Freq{k} <= f_max);
+    RealData{k}  = RealData{k}(freq_mask);
+    Imaginary{k} = Imaginary{k}(freq_mask);
+    Freq{k}      = Freq{k}(freq_mask);
+end
+
+
+
+%%
+% Compute RMSD of each dataset vs the first one
+nFiles = numel(RealData);
+rmsd_vals = zeros(1, nFiles);
+
+R_ref = RealData{1};
+for k = 1:nFiles
+    rmsd_vals(k) = computeRMSD(RealData{k}, R_ref);
+end
+
+% Compute delta weight relative to 115 g
+delta_weight = 115-weights;
+
+% Fit linear trend of RMSD vs delta_weight
+p = polyfit(delta_weight, rmsd_vals, 1);  % slope and intercept
+trend = polyval(p, delta_weight);
+
+% Compute slope per gram
+slope_per_gram = p(1);
+
+% Plot RMSD as line and trend
+figure;
+plot(115-weights, rmsd_vals, '-o', 'LineWidth', 1.5); % line plot
+hold on;
+plot(115-weights, trend, '-r', 'LineWidth', 1.5);
+
+xlabel('Delta Weight (change from 115g)');
+ylabel('RMSD');
+title('RMSD vs Weight with Trend Line');
+legend('RMSD', sprintf('Trend: %.4f RMSD per g', slope_per_gram));
+grid on;
+hold off;
+
+%%
+% Preallocate
+nFiles = numel(RealData);
+peak_freq  = zeros(1, nFiles);
+peak_amp   = zeros(1, nFiles);
+data_skew  = zeros(1, nFiles);
+data_mean  = zeros(1, nFiles);
+
+for k = 1:nFiles
+    R = RealData{k};
+    f = Freq{k};
+
+    % Peak amplitude and corresponding frequency
+    [peak_amp(k), idx] = max(R);
+    peak_freq(k) = f(idx);
+
+    % Skew and mean
+    data_skew(k) = skewness(R);
+    data_mean(k) = mean(R);
+end
+
+% Compute delta relative to first measurement
+delta_peak_amp  = peak_amp  - peak_amp(1);
+delta_peak_freq = peak_freq - peak_freq(1);
+delta_skew      = data_skew - data_skew(1);
+delta_mean      = data_mean - data_mean(1);
+
+% Plot in subplots
+figure;
+
+% --- Peak Amplitude ---
+subplot(2,2,1)
+plot(115-weights, delta_peak_amp, '-o','LineWidth',1.5)
+hold on
+p = polyfit(115-weights, delta_peak_amp, 1); % linear fit
+plot(115-weights, polyval(p, 115-weights), '--r', 'LineWidth',1.5)
+legend(sprintf('Data\nSlope = %.3f per g', p(1)))
+xlabel('Delta Weight (change from 115g)'); ylabel('\Delta Peak Amplitude')
+title('Peak Amplitude vs Weight')
+grid on
+
+% --- Peak Frequency ---
+subplot(2,2,2)
+plot(115-weights, delta_peak_freq/1e3, '-o','LineWidth',1.5)
+hold on
+p = polyfit(115-weights, delta_peak_freq, 1);
+plot(115-weights, polyval(p, 115-weights)/1e3, '--r', 'LineWidth',1.5)
+legend(sprintf('Data\nSlope = %.3f kHz per g', p(1)/1e3))
+xlabel('Delta Weight (change from 115g)'); ylabel('\Delta Peak Frequency [kHz]')
+title('Peak Frequency vs Weight')
+grid on
+
+% --- Skewness ---
+subplot(2,2,3)
+plot(115-weights, delta_skew, '-o','LineWidth',1.5)
+hold on
+p = polyfit(115-weights, delta_skew, 1);
+plot(115-weights, polyval(p, 115-weights), '--r', 'LineWidth',1.5)
+legend(sprintf('Data\nSlope = %.3f per g', p(1)))
+xlabel('Delta Weight (change from 115g)'); ylabel('\Delta Skewness')
+title('Skewness vs Weight')
+grid on
+
+% --- Mean Value ---
+subplot(2,2,4)
+plot(115-weights, delta_mean, '-o','LineWidth',1.5)
+hold on
+p = polyfit(115-weights, delta_mean, 1);
+plot(115-weights, polyval(p, 115-weights), '--r', 'LineWidth',1.5)
+legend(sprintf('Data\nSlope = %.3f per g', p(1)))
+xlabel('Delta Weight (change from 115g)'); ylabel('\Delta Mean Value')
+title('Mean Value vs Weight')
+grid on
+
+%% ================= FIGURE 6: Re/Im(Z) =================
+figure;
+hold on; grid on;
+% Use semilogx if USE_LOG_X is true, otherwise regular plot
+for k = 1:nF
+        plot(f, RealData{k}, '-', 'LineWidth',1.4, 'Color', cols(k,:));
+end
+
+hold off
+%xlim([f_min f_max]); 
+ylabel('R [\Omega]'); 
+title('Resistance Re(Z)');
+legend(LEG, 'Location', 'bestoutside');
+
+
+
 
 %% ================= LOCAL FUNCTIONS =================
 function D = load_one(file_path, V_rms, I_SCALE, F_MIN, F_MAX, USE_SMOOTH, SMOOTH_WIN)
@@ -365,3 +411,22 @@ end
 function out = ternary(cond, a, b)
     if cond, out = a; else, out = b; end
 end
+
+
+
+function rmsd = computeRMSD(array1, array2)
+    % Check if input arrays are of the same size
+    if length(array1) ~= length(array2)
+        error('Input arrays must have the same size.');
+    end
+    
+    % Compute the squared differences
+    diffSquared = (array1 - array2).^2;
+    
+    % Compute the mean of the squared differences
+    meanDiffSquared = mean(diffSquared);
+    
+    % Compute the RMSD
+    rmsd = sqrt(meanDiffSquared);
+end
+
